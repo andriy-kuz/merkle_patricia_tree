@@ -1,0 +1,6 @@
+[package]
+name = "merkle_patricia_tree"
+version = "0.1.0"
+authors = ["Andrii Kuz <ext-andrii.kuz@here.com>"]
+
+[dependencies]
