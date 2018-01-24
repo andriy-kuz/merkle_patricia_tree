@@ -4,3 +4,5 @@ version = "0.1.0"
 authors = ["Andrii Kuz <ext-andrii.kuz@here.com>"]
 
 [dependencies]
+rlp = "0.2.1"
+#leveldb = "0.8.4"
