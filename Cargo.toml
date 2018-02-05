@@ -5,4 +5,4 @@ authors = ["Andrii Kuz <ext-andrii.kuz@here.com>"]
 
 [dependencies]
 rlp = "0.2.1"
-#leveldb = "0.8.4"
+leveldb = "0.8.4"
