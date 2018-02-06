@@ -1,6 +1,4 @@
-extern crate rlp;
-
-use rlp::{Encodable, Decodable, RlpStream};
+use rlp::{Encodable, Decodable, RlpStream, UntrustedRlp, DecoderError};
 
 pub enum Node<T: Encodable + Decodable> {
     Null,
@@ -60,4 +58,35 @@ impl <T: Encodable + Decodable> Decodable for Node<T> {
     fn decode(rlp: &UntrustedRlp) -> Result<Self, DecoderError> {
 
     }
+}
+
+fn compact_encode(hex_array : Vec<u8>) -> Vec<u8> {
+    let term = if *hex_array.last().unwrap() == 16 as u8 {1} else {0};
+    if term == 1 {
+        hex_array.pop();
+    }
+    let odd_len = hex_array.len() % 2;
+    let flags = 2 * term + odd_len as u8;
+    let hex_array = if odd_len == 1 {
+        let array = Vec::new();
+        array.push(flags);
+        array.append(&mut hex_array);
+        array
+    } else {
+        let array = Vec::new();
+        array.push(flags);
+        array.push(0);
+        array.append(&mut hex_array);
+        array
+    };
+    let result = Vec::with_capacity(hex_array.len()/2);
+
+    for iter in (0..hex_array.len()).step_by(2) {
+        result.push(16*hex_array[iter] + hex_array[iter + 1]);
+    }
+    result
+}
+
+fn compact_decode(hex_array : Vec<u8>) -> Vec<u8> {
+    Vec::new()
 }
