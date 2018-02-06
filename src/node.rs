@@ -3,8 +3,8 @@ use rlp::{Encodable, Decodable, RlpStream, UntrustedRlp, DecoderError};
 pub enum Node<T: Encodable + Decodable> {
     Null,
     Branch { nibles: [Vec<u8>; 16], value: Option<T> },
-    Leaf { is_even: bool, path: Vec<u8>, value: T },
-    Extention { is_even: bool, path: Vec<u8>, key: [u8; 64] },
+    Leaf { path: Vec<u8>, value: T },
+    Extention { path: Vec<u8>, key: [u8; 64] },
 }
 
 impl <T: Encodable + Decodable> Encodable for Node<T> {
@@ -39,15 +39,19 @@ impl <T: Encodable + Decodable> Encodable for Node<T> {
                     list.append(value);
                 }
             },
-            &Node::Leaf{ ref is_even, ref path, ref value} => {
-                
+            &Node::Leaf{ ref path, ref value} => {
+                let mut path = path.clone();
+                // add terminating(leaf) node flag
+                path.push(16);
+                let path = compact_encode(path);
                 s.begin_list(2)
-                .append(path)
+                .append(&path)
                 .append(value);
             },
-            &Node::Extention{ ref is_even, ref path, ref key} => {
+            &Node::Extention{ ref path, ref key} => {
+                let path = compact_encode(path.clone());
                 s.begin_list(2)
-                .append(path)
+                .append(&path)
                 .append(&key.to_vec());
             },
         };
