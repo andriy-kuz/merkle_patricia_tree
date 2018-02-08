@@ -4,7 +4,7 @@ pub enum Node<T: Encodable + Decodable> {
     Null,
     Branch { nibles: [Vec<u8>; 16], value: Option<T> },
     Leaf { path: Vec<u8>, value: T },
-    Extention { path: Vec<u8>, key: [u8; 64] },
+    Extention { path: Vec<u8>, key: Vec<u8> },
 }
 
 impl <T: Encodable + Decodable> Encodable for Node<T> {
@@ -44,7 +44,7 @@ impl <T: Encodable + Decodable> Encodable for Node<T> {
             &Node::Leaf{ ref path, ref value} => {
                 let mut path = path.clone();
                 // add terminating(leaf) node flag
-                path.push(16);
+                path.push(0x10);
                 let path = compact_encode(path);
                 s.begin_list(2)
                 .append(&path)
@@ -54,7 +54,7 @@ impl <T: Encodable + Decodable> Encodable for Node<T> {
                 let path = compact_encode(path.clone());
                 s.begin_list(2)
                 .append(&path)
-                .append(&key.to_vec());
+                .append(&key.clone());
             },
         };
     }
@@ -62,7 +62,57 @@ impl <T: Encodable + Decodable> Encodable for Node<T> {
 
 impl <T: Encodable + Decodable> Decodable for Node<T> {
     fn decode(rlp: &UntrustedRlp) -> Result<Self, DecoderError> {
-
+        // Is null node
+        if !rlp.val_at::<Vec<u8>>(0).is_ok() {
+            return Ok(Node::Null);
+        }
+        // Is branch node
+        if rlp.val_at::<Vec<u8>>(15).is_ok() {
+            return  
+            Ok(
+                Node::Branch {
+                    nibles: [
+                        rlp.val_at::<Vec<u8>>(0)?,
+                        rlp.val_at::<Vec<u8>>(1)?,
+                        rlp.val_at::<Vec<u8>>(2)?,
+                        rlp.val_at::<Vec<u8>>(3)?,
+                        rlp.val_at::<Vec<u8>>(4)?,
+                        rlp.val_at::<Vec<u8>>(5)?,
+                        rlp.val_at::<Vec<u8>>(6)?,
+                        rlp.val_at::<Vec<u8>>(7)?,
+                        rlp.val_at::<Vec<u8>>(8)?,
+                        rlp.val_at::<Vec<u8>>(9)?,
+                        rlp.val_at::<Vec<u8>>(10)?,
+                        rlp.val_at::<Vec<u8>>(11)?,
+                        rlp.val_at::<Vec<u8>>(12)?,
+                        rlp.val_at::<Vec<u8>>(13)?,
+                        rlp.val_at::<Vec<u8>>(14)?,
+                        rlp.val_at::<Vec<u8>>(15)?,
+                    ],
+                    //TODO: CHECK ENCODE AND DECODE OF TYPE T
+                    value: rlp.val_at::<T>(16).ok()
+                }
+            );
+        }
+        // This is extension or terminating node
+        let mut path = compact_decode( rlp.val_at::<Vec<u8>>(0)? );
+        // Is terminating node
+        if *path.last().unwrap() == 0x10 {
+            path.pop();
+            return Ok (
+                Node::Leaf {
+                    path,
+                    value : rlp.val_at::<T>(1)?
+                }
+            )
+        }
+        // This is extension node
+        Ok(
+            Node::Extention {
+                path,
+                key : rlp.val_at::<Vec<u8>>(1)?
+            }
+        )
     }
 }
 
@@ -75,7 +125,7 @@ fn compact_encode(mut hex_array : Vec<u8>) -> Vec<u8> {
     let odd_len = hex_array.len() % 2;
     let flags = 2 * term + odd_len as u8;
 
-    let mut hex_array = if odd_len == 1 {
+    let hex_array = if odd_len == 1 {
         let mut array = Vec::new();
         array.push(flags);
         array.append(&mut hex_array);
