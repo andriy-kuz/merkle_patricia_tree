@@ -89,7 +89,6 @@ impl <T: Encodable + Decodable> Decodable for Node<T> {
                         rlp.val_at::<Vec<u8>>(14)?,
                         rlp.val_at::<Vec<u8>>(15)?,
                     ],
-                    //TODO: CHECK ENCODE AND DECODE OF TYPE T
                     value: rlp.val_at::<T>(16).ok()
                 }
             );
