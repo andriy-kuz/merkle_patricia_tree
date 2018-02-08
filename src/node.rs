@@ -54,7 +54,7 @@ impl <T: Encodable + Decodable> Encodable for Node<T> {
                 let path = compact_encode(path.clone());
                 s.begin_list(2)
                 .append(&path)
-                .append(&key.clone());
+                .append(key);
             },
         };
     }
@@ -168,6 +168,7 @@ fn compact_decode(hex_array : Vec<u8>) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    extern crate rlp;
     use super::*;
 
     #[test]
@@ -216,5 +217,130 @@ mod tests {
         let result = compact_decode(data);
         assert_eq!(result.len(), 6);
         assert_eq!(result, vec![0x0f, 0x01, 0x0c, 0x0b, 0x08, 0x10]);
+    }
+
+    #[test]
+    fn null_node_test() {
+        // Null node
+        let node : Node<u32> = Node::Null;
+        let data = rlp::encode(&node).into_vec();
+        assert_eq!(data[0], 0xc0);
+        let node : Node<u32> = rlp::decode(&data);
+
+        match node {
+            Node::Null => assert!(true),
+            _ => assert!(false),
+        }
+    }
+
+    #[test]
+    fn branch_node_test() {
+        branch_node_with_value(true);
+        branch_node_with_value(false);
+    }
+
+    fn branch_node_with_value(some_value: bool) {
+
+        let node : Node<u32> = Node::Branch {
+            nibles : [
+                vec![],
+                vec![0x01, 0x02, 0x03, 0x04, 0x05], //index 1
+                vec![],
+                vec![],
+                vec![0x01, 0x02, 0x03, 0x04, 0x05], //index 4
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 
+                0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 
+                0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 
+                0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04], // index 9
+                vec![],
+                vec![],
+                vec![],
+                vec![0x01, 0x02, 0x03, 0x04, 0x05], // index 13
+                vec![],
+                vec![0x01, 0x02, 0x03, 0x04, 0x05], // index 15
+            ],
+            value : if some_value {Some(77)} else {None},
+        };
+        let data = rlp::encode(&node).into_vec();
+        let node : Node<u32> = rlp::decode(&data);
+
+        match node {
+            Node::Branch{ nibles, value } =>{
+                // Check empty nibles
+                assert!(nibles[0].is_empty());
+                assert!(nibles[2].is_empty());
+                assert!(nibles[3].is_empty());
+                assert!(nibles[5].is_empty());
+                assert!(nibles[6].is_empty());
+                assert!(nibles[7].is_empty());
+                assert!(nibles[8].is_empty());
+                assert!(nibles[10].is_empty());
+                assert!(nibles[11].is_empty());
+                assert!(nibles[12].is_empty());
+                assert!(nibles[14].is_empty());
+                // Check nibles data
+                assert_eq!(nibles[1], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+                assert_eq!(nibles[4], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+
+                assert_eq!(nibles[9], 
+                vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 
+                0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 
+                0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 
+                0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04]);
+
+                assert_eq!(nibles[13], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+                assert_eq!(nibles[15], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+                // Check value
+                assert_eq!(value.is_some(), some_value);
+
+                if let Some(value) = value {
+                    assert_eq!(value, 77);
+                }
+            },
+            _ => assert!(false),
+        }
+    }
+
+    #[test]
+    fn extention_node_test() {
+        let node : Node<u32> = Node::Extention { 
+            path: vec![0x01, 0x02, 0x03, 0x04, 0x05], 
+            key: vec![0x01, 0x02, 0x03, 0x04, 0x05], 
+        };
+        let data = rlp::encode(&node).into_vec();
+        let node : Node<u32> = rlp::decode(&data);
+
+        match node {
+            Node::Extention {path, key} => {
+                assert_eq!(path, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+                assert_eq!(key, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+            }
+            _ => assert!(false),
+        }
+    }
+
+    #[test]
+    fn leaf_node_test() {
+        let node : Node<u32> = Node::Leaf { 
+            path: vec![0x01, 0x02, 0x03, 0x04, 0x05], 
+            value: 77, 
+        };
+        let data = rlp::encode(&node).into_vec();
+        let node : Node<u32> = rlp::decode(&data);
+
+        match node {
+            Node::Leaf {path, value} => {
+                assert_eq!(path, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+                assert_eq!(value, 77);
+            }
+            _ => assert!(false),
+        }
+
     }
 }
