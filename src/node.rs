@@ -16,7 +16,7 @@ impl <T: Encodable + Decodable> Encodable for Node<T> {
             &Node::Branch { ref nibles, ref value }=> {
                 let mut count = 16;
 
-                if let &Some(_) = value {
+                if value.is_some() {
                     count = 17;
                 }
                 let mut list = s.begin_list(count);
