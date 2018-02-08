@@ -66,7 +66,7 @@ impl <T: Encodable + Decodable> Decodable for Node<T> {
     }
 }
 
-fn compact_encode(hex_array : Vec<u8>) -> Vec<u8> {
+fn compact_encode(mut hex_array : Vec<u8>) -> Vec<u8> {
     let term = if *hex_array.last().unwrap() == 0x10 {1} else {0};
 
     if term == 1 {
@@ -75,19 +75,19 @@ fn compact_encode(hex_array : Vec<u8>) -> Vec<u8> {
     let odd_len = hex_array.len() % 2;
     let flags = 2 * term + odd_len as u8;
 
-    let hex_array = if odd_len == 1 {
-        let array = Vec::new();
+    let mut hex_array = if odd_len == 1 {
+        let mut array = Vec::new();
         array.push(flags);
         array.append(&mut hex_array);
         array
     } else {
-        let array = Vec::new();
+        let mut array = Vec::new();
         array.push(flags);
         array.push(0);
         array.append(&mut hex_array);
         array
     };
-    let result = Vec::with_capacity(hex_array.len()/2);
+    let mut result = Vec::with_capacity(hex_array.len()/2);
 
     for iter in (0..hex_array.len()).step_by(2) {
         result.push(16*hex_array[iter] + hex_array[iter + 1]);
@@ -96,19 +96,17 @@ fn compact_encode(hex_array : Vec<u8>) -> Vec<u8> {
 }
 
 fn compact_decode(hex_array : Vec<u8>) -> Vec<u8> {
-    let odd_len = (hex_array[0] & 0xF0) ==  0x10;
+    let odd_len = (hex_array[0] & 0x10) == 0x10;
     let term = (hex_array[0] & 0x20) == 0x20;
-    let mut index = 0;
     //allocate vector with accurate capacity value
     let mut result = Vec::with_capacity((hex_array.len()- !odd_len as usize)*2 - odd_len as usize + term as usize);
 
     if odd_len {
-        result.push(hex_array[index] & 0x0F);
-        index += 1;
+        result.push(hex_array[0] & 0x0F);
     }
 
-    for iter in index..hex_array.len() {
-        result.push(hex_array[iter] & 0xF0);
+    for iter in 1..hex_array.len() {
+        result.push((hex_array[iter] & 0xF0) >> 4);
         result.push(hex_array[iter] & 0x0F);
     }
     
@@ -116,4 +114,57 @@ fn compact_decode(hex_array : Vec<u8>) -> Vec<u8> {
         result.push(0x10);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_encode_test() {
+        // [ 0x01, 0x02, 0x03, 0x04, 0x05 ] -> [ 0x11, 0x23, 0x45 ]
+        let data = vec![0x01, 0x02, 0x03, 0x04, 0x05];
+        let result = compact_encode(data);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result, vec![0x11, 0x23, 0x45]);
+        // [ 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 ] -> [ 0x00, 0x01, 0x23, 0x45 ]
+        let data = vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05];
+        let result = compact_encode(data);
+        assert_eq!(result.len(), 4);
+        assert_eq!(result, vec![0x00, 0x01, 0x23, 0x45]);
+        // [ 0x00, 0x0f, 0x01, 0x0c, 0x0b, 0x08, 0x10 ] -> [ 0x20, 0x0f, 0x1c, 0xb8 ]
+        let data = vec![0x00, 0x0f, 0x01, 0x0c, 0x0b, 0x08, 0x10];
+        let result = compact_encode(data);
+        assert_eq!(result.len(), 4);
+        assert_eq!(result, vec![0x20, 0x0f, 0x1c, 0xb8]);
+        // [ 0x0f, 0x01, 0x0c, 0x0b, 0x08, 0x10 ] -> [ 0x3f, 0x1c, 0xb8 ]
+        let data = vec![0x0f, 0x01, 0x0c, 0x0b, 0x08, 0x10];
+        let result = compact_encode(data);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result, vec![0x3f, 0x1c, 0xb8]);
+    }
+
+    #[test]
+    fn compact_decode_test() {
+        // [ 0x11, 0x23, 0x45 ] -> [ 0x01, 0x02, 0x03, 0x04, 0x05 ]
+        let data = vec![0x11, 0x23, 0x45];
+        let result = compact_decode(data);
+        assert_eq!(result.len(), 5);
+        assert_eq!(result, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+        // [ 0x00, 0x01, 0x23, 0x45 ] -> [ 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 ]
+        let data = vec![0x00, 0x01, 0x23, 0x45];
+        let result = compact_decode(data);
+        assert_eq!(result.len(), 6);
+        assert_eq!(result, vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05]);
+        // [ 0x20, 0x0f, 0x1c, 0xb8 ] -> [ 0x00, 0x0f, 0x01, 0x0c, 0x0b, 0x08, 0x10 ]
+        let data = vec![0x20, 0x0f, 0x1c, 0xb8];
+        let result = compact_decode(data);
+        assert_eq!(result.len(), 7);
+        assert_eq!(result, vec![0x00, 0x0f, 0x01, 0x0c, 0x0b, 0x08, 0x10]);
+        // [ 0x3f, 0x1c, 0xb8 ] -> [ 0x0f, 0x01, 0x0c, 0x0b, 0x08, 0x10 ]
+        let data = vec![0x3f, 0x1c, 0xb8];
+        let result = compact_decode(data);
+        assert_eq!(result.len(), 6);
+        assert_eq!(result, vec![0x0f, 0x01, 0x0c, 0x0b, 0x08, 0x10]);
+    }
 }
