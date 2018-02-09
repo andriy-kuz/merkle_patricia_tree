@@ -21,6 +21,18 @@ impl <T: Encodable + Decodable> MerkleTree<T> {
             storage : storage,
         }
     }
+
+    pub fn update(&mut self, key: [u8; 32], value: T) {
+
+    }
+
+    pub fn delete(&mut self, key: [u8; 32]) {
+
+    }
+
+    pub fn get(&self, key: [u8; 32]) -> Option<T> {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -28,6 +40,6 @@ mod tests {
     use super::*;
     #[test]
     fn test_demo() {
-        let tri = MerkleTree::<u32>::new([0;32], "demo");
+        //let tri = MerkleTree::<u32>::new([0;32], "demo");
     }
 }
