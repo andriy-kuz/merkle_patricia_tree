@@ -49,7 +49,7 @@ impl <'a> Drop for Storage<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    
     #[test]
     fn basic_storage_test() {
         let mut storage = Storage::new("storage_test", true);
