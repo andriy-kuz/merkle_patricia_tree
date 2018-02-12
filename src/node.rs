@@ -5,7 +5,7 @@ use std::clone::Clone;
 #[derive(Clone)]
 pub enum Node<T: Encodable + Decodable + Clone> {
     Null,
-    Branch { nibles: [Option<H256>; 16], value: Option<T> },
+    Branch { nibles: [Vec<u8>; 16], value: Option<T> },
     Leaf { path: Vec<u8>, value: T },
     Extention { path: Vec<u8>, key: H256 },
 }
@@ -58,32 +58,31 @@ impl <T: Encodable + Decodable + Clone> Encodable for Node<T> {
 impl <T: Encodable + Decodable + Clone> Decodable for Node<T> {
     fn decode(rlp: &UntrustedRlp) -> Result<Self, DecoderError> {
         // Is null node
-        if !rlp.val_at::<Vec<u8>>(0).is_ok() &&
-            !rlp.val_at::<Option<H256>>(0).is_ok() {
+        if !rlp.val_at::<Vec<u8>>(0).is_ok() {
             return Ok(Node::Null);
         }
         // Is branch node
-        if rlp.val_at::<Option<H256>>(15).is_ok() {
+        if rlp.val_at::<Vec<u8>>(15).is_ok() {
             return  
             Ok(
                 Node::Branch {
                     nibles: [
-                        rlp.val_at::<Option<H256>>(0)?,
-                        rlp.val_at::<Option<H256>>(1)?,
-                        rlp.val_at::<Option<H256>>(2)?,
-                        rlp.val_at::<Option<H256>>(3)?,
-                        rlp.val_at::<Option<H256>>(4)?,
-                        rlp.val_at::<Option<H256>>(5)?,
-                        rlp.val_at::<Option<H256>>(6)?,
-                        rlp.val_at::<Option<H256>>(7)?,
-                        rlp.val_at::<Option<H256>>(8)?,
-                        rlp.val_at::<Option<H256>>(9)?,
-                        rlp.val_at::<Option<H256>>(10)?,
-                        rlp.val_at::<Option<H256>>(11)?,
-                        rlp.val_at::<Option<H256>>(12)?,
-                        rlp.val_at::<Option<H256>>(13)?,
-                        rlp.val_at::<Option<H256>>(14)?,
-                        rlp.val_at::<Option<H256>>(15)?,
+                        rlp.val_at::<Vec<u8>>(0)?,
+                        rlp.val_at::<Vec<u8>>(1)?,
+                        rlp.val_at::<Vec<u8>>(2)?,
+                        rlp.val_at::<Vec<u8>>(3)?,
+                        rlp.val_at::<Vec<u8>>(4)?,
+                        rlp.val_at::<Vec<u8>>(5)?,
+                        rlp.val_at::<Vec<u8>>(6)?,
+                        rlp.val_at::<Vec<u8>>(7)?,
+                        rlp.val_at::<Vec<u8>>(8)?,
+                        rlp.val_at::<Vec<u8>>(9)?,
+                        rlp.val_at::<Vec<u8>>(10)?,
+                        rlp.val_at::<Vec<u8>>(11)?,
+                        rlp.val_at::<Vec<u8>>(12)?,
+                        rlp.val_at::<Vec<u8>>(13)?,
+                        rlp.val_at::<Vec<u8>>(14)?,
+                        rlp.val_at::<Vec<u8>>(15)?,
                     ],
                     value: rlp.val_at::<Option<T>>(16)?,
                 }
@@ -238,22 +237,26 @@ mod tests {
 
         let node : Node<u32> = Node::Branch {
             nibles : [
-                None,
-                Some(H256::from(1 as u64)), //index 1
-                None,
-                None,
-                Some(H256::from(4 as u64)), //index 4
-                None,
-                None,
-                None,
-                None,
-                Some(H256::from(9 as u64)), // index 9
-                None,
-                None,
-                None,
-                Some(H256::from(13 as u64)), // index 13
-                None,
-                Some(H256::from(15 as u64)), // index 15
+                vec![],
+                vec![0x01, 0x02, 0x03, 0x04, 0x05], //index 1
+                vec![],
+                vec![],
+                vec![0x01, 0x02, 0x03, 0x04, 0x05], //index 4
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 
+                0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 
+                0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 
+                0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04], // index 9
+                vec![],
+                vec![],
+                vec![],
+                vec![0x01, 0x02, 0x03, 0x04, 0x05], // index 13
+                vec![],
+                vec![0x01, 0x02, 0x03, 0x04, 0x05], // index 15
             ],
             value : if some_value {Some(77)} else {None},
         };
@@ -263,25 +266,30 @@ mod tests {
         match node {
             Node::Branch{ nibles, value } => {
                 // Check empty nibles
-                assert!(nibles[0].is_none());
-                assert!(nibles[2].is_none());
-                assert!(nibles[3].is_none());
-                assert!(nibles[5].is_none());
-                assert!(nibles[6].is_none());
-                assert!(nibles[7].is_none());
-                assert!(nibles[8].is_none());
-                assert!(nibles[10].is_none());
-                assert!(nibles[11].is_none());
-                assert!(nibles[12].is_none());
-                assert!(nibles[14].is_none());
+                assert!(nibles[0].is_empty());
+                assert!(nibles[2].is_empty());
+                assert!(nibles[3].is_empty());
+                assert!(nibles[5].is_empty());
+                assert!(nibles[6].is_empty());
+                assert!(nibles[7].is_empty());
+                assert!(nibles[8].is_empty());
+                assert!(nibles[10].is_empty());
+                assert!(nibles[11].is_empty());
+                assert!(nibles[12].is_empty());
+                assert!(nibles[14].is_empty());
                 // Check nibles data
-                assert_eq!(nibles[1], Some(H256::from(1 as u64)));
-                assert_eq!(nibles[4], Some(H256::from(4 as u64)));
+                assert_eq!(nibles[1], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+                assert_eq!(nibles[4], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
 
-                assert_eq!(nibles[9], Some(H256::from(9 as u64)));
+                assert_eq!(nibles[9], 
+                vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 
+                0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 
+                0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 
+                0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04]);
 
-                assert_eq!(nibles[13], Some(H256::from(13 as u64)));
-                assert_eq!(nibles[15], Some(H256::from(15 as u64)));
+                assert_eq!(nibles[13], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+                assert_eq!(nibles[15], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
                 // Check value
                 assert_eq!(value.is_some(), some_value);
 
