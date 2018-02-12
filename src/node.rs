@@ -1,25 +1,23 @@
+use ethereum_types::H256;
 use rlp::{Encodable, Decodable, RlpStream, UntrustedRlp, DecoderError};
+use std::clone::Clone;
 
-pub enum Node<T: Encodable + Decodable> {
+#[derive(Clone)]
+pub enum Node<T: Encodable + Decodable + Clone> {
     Null,
-    Branch { nibles: [Vec<u8>; 16], value: Option<T> },
+    Branch { nibles: [Option<H256>; 16], value: Option<T> },
     Leaf { path: Vec<u8>, value: T },
-    Extention { path: Vec<u8>, key: Vec<u8> },
+    Extention { path: Vec<u8>, key: H256 },
 }
 
-impl <T: Encodable + Decodable> Encodable for Node<T> {
+impl <T: Encodable + Decodable + Clone> Encodable for Node<T> {
     fn rlp_append(&self, s: &mut RlpStream) {
         match self {
             &Node::Null => {
                 s.begin_list(0);
             },
             &Node::Branch { ref nibles, ref value }=> {
-                let mut count = 16;
-
-                if value.is_some() {
-                    count = 17;
-                }
-                let mut list = s.begin_list(count);
+                let mut list = s.begin_list(17);
                 list.append(&nibles[0])
                 .append(&nibles[1])
                 .append(&nibles[2])
@@ -35,11 +33,8 @@ impl <T: Encodable + Decodable> Encodable for Node<T> {
                 .append(&nibles[12])
                 .append(&nibles[13])
                 .append(&nibles[14])
-                .append(&nibles[15]);
-
-                if let &Some(ref value) = value {
-                    list.append(value);
-                }
+                .append(&nibles[15])
+                .append(value);
             },
             &Node::Leaf{ ref path, ref value} => {
                 let mut path = path.clone();
@@ -60,36 +55,37 @@ impl <T: Encodable + Decodable> Encodable for Node<T> {
     }
 }
 
-impl <T: Encodable + Decodable> Decodable for Node<T> {
+impl <T: Encodable + Decodable + Clone> Decodable for Node<T> {
     fn decode(rlp: &UntrustedRlp) -> Result<Self, DecoderError> {
         // Is null node
-        if !rlp.val_at::<Vec<u8>>(0).is_ok() {
+        if !rlp.val_at::<Vec<u8>>(0).is_ok() &&
+            !rlp.val_at::<Option<H256>>(0).is_ok() {
             return Ok(Node::Null);
         }
         // Is branch node
-        if rlp.val_at::<Vec<u8>>(15).is_ok() {
+        if rlp.val_at::<Option<H256>>(15).is_ok() {
             return  
             Ok(
                 Node::Branch {
                     nibles: [
-                        rlp.val_at::<Vec<u8>>(0)?,
-                        rlp.val_at::<Vec<u8>>(1)?,
-                        rlp.val_at::<Vec<u8>>(2)?,
-                        rlp.val_at::<Vec<u8>>(3)?,
-                        rlp.val_at::<Vec<u8>>(4)?,
-                        rlp.val_at::<Vec<u8>>(5)?,
-                        rlp.val_at::<Vec<u8>>(6)?,
-                        rlp.val_at::<Vec<u8>>(7)?,
-                        rlp.val_at::<Vec<u8>>(8)?,
-                        rlp.val_at::<Vec<u8>>(9)?,
-                        rlp.val_at::<Vec<u8>>(10)?,
-                        rlp.val_at::<Vec<u8>>(11)?,
-                        rlp.val_at::<Vec<u8>>(12)?,
-                        rlp.val_at::<Vec<u8>>(13)?,
-                        rlp.val_at::<Vec<u8>>(14)?,
-                        rlp.val_at::<Vec<u8>>(15)?,
+                        rlp.val_at::<Option<H256>>(0)?,
+                        rlp.val_at::<Option<H256>>(1)?,
+                        rlp.val_at::<Option<H256>>(2)?,
+                        rlp.val_at::<Option<H256>>(3)?,
+                        rlp.val_at::<Option<H256>>(4)?,
+                        rlp.val_at::<Option<H256>>(5)?,
+                        rlp.val_at::<Option<H256>>(6)?,
+                        rlp.val_at::<Option<H256>>(7)?,
+                        rlp.val_at::<Option<H256>>(8)?,
+                        rlp.val_at::<Option<H256>>(9)?,
+                        rlp.val_at::<Option<H256>>(10)?,
+                        rlp.val_at::<Option<H256>>(11)?,
+                        rlp.val_at::<Option<H256>>(12)?,
+                        rlp.val_at::<Option<H256>>(13)?,
+                        rlp.val_at::<Option<H256>>(14)?,
+                        rlp.val_at::<Option<H256>>(15)?,
                     ],
-                    value: rlp.val_at::<T>(16).ok()
+                    value: rlp.val_at::<Option<T>>(16)?,
                 }
             );
         }
@@ -109,7 +105,7 @@ impl <T: Encodable + Decodable> Decodable for Node<T> {
         Ok(
             Node::Extention {
                 path,
-                key : rlp.val_at::<Vec<u8>>(1)?
+                key : rlp.val_at::<H256>(1)?
             }
         )
     }
@@ -242,26 +238,22 @@ mod tests {
 
         let node : Node<u32> = Node::Branch {
             nibles : [
-                vec![],
-                vec![0x01, 0x02, 0x03, 0x04, 0x05], //index 1
-                vec![],
-                vec![],
-                vec![0x01, 0x02, 0x03, 0x04, 0x05], //index 4
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-                vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 
-                0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 
-                0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,
-                0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 
-                0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04], // index 9
-                vec![],
-                vec![],
-                vec![],
-                vec![0x01, 0x02, 0x03, 0x04, 0x05], // index 13
-                vec![],
-                vec![0x01, 0x02, 0x03, 0x04, 0x05], // index 15
+                None,
+                Some(H256::from(1 as u64)), //index 1
+                None,
+                None,
+                Some(H256::from(4 as u64)), //index 4
+                None,
+                None,
+                None,
+                None,
+                Some(H256::from(9 as u64)), // index 9
+                None,
+                None,
+                None,
+                Some(H256::from(13 as u64)), // index 13
+                None,
+                Some(H256::from(15 as u64)), // index 15
             ],
             value : if some_value {Some(77)} else {None},
         };
@@ -269,32 +261,27 @@ mod tests {
         let node : Node<u32> = rlp::decode(&data);
 
         match node {
-            Node::Branch{ nibles, value } =>{
+            Node::Branch{ nibles, value } => {
                 // Check empty nibles
-                assert!(nibles[0].is_empty());
-                assert!(nibles[2].is_empty());
-                assert!(nibles[3].is_empty());
-                assert!(nibles[5].is_empty());
-                assert!(nibles[6].is_empty());
-                assert!(nibles[7].is_empty());
-                assert!(nibles[8].is_empty());
-                assert!(nibles[10].is_empty());
-                assert!(nibles[11].is_empty());
-                assert!(nibles[12].is_empty());
-                assert!(nibles[14].is_empty());
+                assert!(nibles[0].is_none());
+                assert!(nibles[2].is_none());
+                assert!(nibles[3].is_none());
+                assert!(nibles[5].is_none());
+                assert!(nibles[6].is_none());
+                assert!(nibles[7].is_none());
+                assert!(nibles[8].is_none());
+                assert!(nibles[10].is_none());
+                assert!(nibles[11].is_none());
+                assert!(nibles[12].is_none());
+                assert!(nibles[14].is_none());
                 // Check nibles data
-                assert_eq!(nibles[1], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
-                assert_eq!(nibles[4], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+                assert_eq!(nibles[1], Some(H256::from(1 as u64)));
+                assert_eq!(nibles[4], Some(H256::from(4 as u64)));
 
-                assert_eq!(nibles[9], 
-                vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 
-                0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 
-                0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,
-                0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 
-                0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04]);
+                assert_eq!(nibles[9], Some(H256::from(9 as u64)));
 
-                assert_eq!(nibles[13], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
-                assert_eq!(nibles[15], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+                assert_eq!(nibles[13], Some(H256::from(13 as u64)));
+                assert_eq!(nibles[15], Some(H256::from(15 as u64)));
                 // Check value
                 assert_eq!(value.is_some(), some_value);
 
@@ -310,7 +297,7 @@ mod tests {
     fn extention_node_test() {
         let node : Node<u32> = Node::Extention { 
             path: vec![0x01, 0x02, 0x03, 0x04, 0x05], 
-            key: vec![0x01, 0x02, 0x03, 0x04, 0x05], 
+            key: H256::from(77 as u64), 
         };
         let data = rlp::encode(&node).into_vec();
         let node : Node<u32> = rlp::decode(&data);
@@ -318,7 +305,7 @@ mod tests {
         match node {
             Node::Extention {path, key} => {
                 assert_eq!(path, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
-                assert_eq!(key, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+                assert_eq!(key, H256::from(77 as u64));
             }
             _ => assert!(false),
         }

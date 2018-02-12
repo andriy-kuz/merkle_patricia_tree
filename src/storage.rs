@@ -1,6 +1,7 @@
 use exonum_leveldb::database::Database;
 use exonum_leveldb::kv::KV;
 use exonum_leveldb::options::{Options,WriteOptions,ReadOptions};
+use ethereum_types::H256;
 
 pub struct Storage {
     db_handle : Database,
@@ -16,14 +17,14 @@ impl Storage {
         })
     }
 
-    pub fn get_value(&self, key : &[u8; 32]) -> Option<Vec<u8>> {
+    pub fn get_value(&self, key : &H256) -> Option<Vec<u8>> {
         match self.db_handle.get(ReadOptions::new(), key) {
             Ok(data) => data,
             Err(e) => { panic!("failed reading data: {:?}", e) },
         }
     }
 
-    pub fn set_value(&mut self, key : &[u8; 32], value: &Vec<u8> ) {
+    pub fn set_value(&mut self, key : &H256, value: &Vec<u8> ) {
         match self.db_handle.put(WriteOptions::new(), key, value) {
             Ok(_) => {},
             Err(e) => { panic!("failed to write to database: {:?}", e) }
@@ -57,9 +58,9 @@ mod tests {
     fn basic_storage_test() {
         run_test( || {
             let mut storage = Storage::new("storage_test");
-            storage.set_value(&[0; 32], &vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+            storage.set_value(&H256::from(1 as u64), &vec![0x01, 0x02, 0x03, 0x04, 0x05]);
 
-            if let Some(value) = storage.get_value(&[0; 32]) {
+            if let Some(value) = storage.get_value(&H256::from(1 as u64)) {
                 assert_eq!(value, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
             }
             else {

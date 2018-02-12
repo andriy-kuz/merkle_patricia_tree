@@ -1,15 +1,17 @@
 pub use rlp::{Encodable, Decodable};
+pub use std::clone::Clone;
+pub use ethereum_types::H256;
 use rlp;
 use node::*;
 use storage::*;
 
-pub struct MerkleTree<T: Encodable + Decodable> {
+pub struct MerkleTree<T: Encodable + Decodable + Clone> {
     root : Node<T>,
     storage : Box<Storage>,
 }
 
-impl <T: Encodable + Decodable> MerkleTree<T> {
-    pub fn new(root: [u8; 32], path : &str) -> MerkleTree<T> {
+impl <T: Encodable + Decodable + Clone> MerkleTree<T> {
+    pub fn new(root: H256, path : &str) -> MerkleTree<T> {
         let storage = Storage::new(path);
         let mut node : Node<T> = Node::Null;
 
@@ -22,24 +24,15 @@ impl <T: Encodable + Decodable> MerkleTree<T> {
         }
     }
 
-    pub fn update(&mut self, key: [u8; 32], value: T) {
+    pub fn update(&mut self, key: H256, value: T) {
 
     }
 
-    pub fn delete(&mut self, key: [u8; 32]) {
+    pub fn delete(&mut self, key: H256) {
 
     }
 
-    pub fn get(&self, key: [u8; 32]) -> Option<T> {
+    pub fn get(&self, key: H256) -> Option<T> {
         None
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_demo() {
-        //let tri = MerkleTree::<u32>::new([0;32], "demo");
     }
 }

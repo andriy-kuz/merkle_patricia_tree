@@ -4,5 +4,7 @@ version = "0.1.0"
 authors = ["Andrii Kuz <ext-andrii.kuz@here.com>"]
 
 [dependencies]
-rlp = "0.2.1"
+#TODO: investigate to use direct link to parity repo/utils/rlp
+rlp = { path = "util/rlp" }
 exonum_leveldb = "0.9.1"
+ethereum-types = "0.2.3"
