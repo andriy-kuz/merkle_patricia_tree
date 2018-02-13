@@ -36,6 +36,13 @@ impl Storage {
         };
     }
 
+    pub fn delete_value(&mut self, key : &H256)  {
+        match self.db_handle.delete(WriteOptions::new(), key) {
+            Ok(_) => {},
+            Err(e) => { panic!("failed to delete from database: {:?}", e) }
+        }
+    }
+
     pub fn get_node<T: Encodable + Decodable + Clone>(&self, key : &H256) -> Option<Node<T>> {
         if let Some(data) = self.get_value(key) {
             return Some(rlp::decode(&data));
@@ -81,6 +88,11 @@ mod tests {
                 assert_eq!(value, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
             }
             else {
+                assert!(false);
+            }
+            storage.delete_value(&H256::from(1 as u64));
+            
+            if let Some(value) = storage.get_value(&H256::from(1 as u64)) {
                 assert!(false);
             }
         })

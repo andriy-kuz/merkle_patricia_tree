@@ -5,6 +5,7 @@ use rlp;
 use node::*;
 use storage::*;
 
+//TODO: Tests for MerkleTree, Doc, Results system
 pub struct MerkleTree<T: Encodable + Decodable + Clone> {
     root : Node<T>,
     storage : Box<Storage>,
@@ -28,11 +29,11 @@ impl <T: Encodable + Decodable + Clone> MerkleTree<T> {
 
     }
 
-    pub fn delete(&mut self, key: H256) {
-
+    pub fn delete(&mut self, key: &H256) {
+        self.storage.delete_value(key);
     }
 
-    pub fn get(&self, key: H256) -> Option<T> {
+    pub fn get(&self, key: &H256) -> Option<T> {
         let mut curr_node = self.root.clone();
         let key = Self::decompress_key(key);
 
@@ -43,7 +44,8 @@ impl <T: Encodable + Decodable + Clone> MerkleTree<T> {
                 },
                 Node::Branch { nibles, value } => {
                     if nibles[key[index] as usize].len() == 0 {
-                        return None;
+                        curr_node = Node::Null;
+                        continue;
                     }
                     let hash = H256::from(nibles[key[index] as usize].as_slice());
 
@@ -75,7 +77,7 @@ impl <T: Encodable + Decodable + Clone> MerkleTree<T> {
         None
     }
 
-    fn decompress_key(key: H256) -> Vec<u8> {
+    fn decompress_key(key: &H256) -> Vec<u8> {
         let mut result = Vec::new();
 
         for iter in 0..key.len() {
