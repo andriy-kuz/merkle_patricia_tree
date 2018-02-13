@@ -2,6 +2,11 @@ use exonum_leveldb::database::Database;
 use exonum_leveldb::kv::KV;
 use exonum_leveldb::options::{Options,WriteOptions,ReadOptions};
 use ethereum_types::H256;
+use rlp::{Encodable, Decodable};
+use rlp;
+use node::*;
+use std::clone::Clone;
+
 
 pub struct Storage {
     db_handle : Database,
@@ -29,6 +34,18 @@ impl Storage {
             Ok(_) => {},
             Err(e) => { panic!("failed to write to database: {:?}", e) }
         };
+    }
+
+    pub fn get_node<T: Encodable + Decodable + Clone>(&self, key : &H256) -> Option<Node<T>> {
+        if let Some(data) = self.get_value(key) {
+            return Some(rlp::decode(&data));
+        }
+        None
+    }
+
+    pub fn set_node<T: Encodable + Decodable + Clone>(&mut self, key : &H256, value: &Node<T>) {
+        let data = rlp::encode(value).into_vec();
+        self.set_value(key, &data);
     }
 }
 
