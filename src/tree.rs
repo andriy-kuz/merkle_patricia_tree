@@ -3,34 +3,34 @@ pub use std::clone::Clone;
 pub use ethereum_types::H256;
 use rlp;
 use node::*;
-use storage::*;
+use db::*;
 
 //TODO: Tests for MerkleTree, Doc, Results system
 pub struct MerkleTree<T: Encodable + Decodable + Clone> {
-    root : Node<T>,
-    storage : Box<Storage>,
+    root: Node<T>,
+    hash: H256,
+    db: Box<Database>,
 }
 
-impl <T: Encodable + Decodable + Clone> MerkleTree<T> {
-    pub fn new(root: H256, path : &str) -> MerkleTree<T> {
-        let storage = Storage::new(path);
-        let mut node : Node<T> = Node::Null;
-
-        if let Some(data) = storage.get_value(&root) {
+impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
+    pub fn new(root: H256, db: Box<Database>) -> MerkleTree<T> {
+        let node;
+        if let Some(data) = db.get_value(&root) {
             node = rlp::decode(&data);
+        } else {
+            panic!("Failed to create trie from root");
         }
         MerkleTree {
-            root : node,
-            storage : storage,
+            root: node,
+            hash: root,
+            db,
         }
     }
 
-    pub fn update(&mut self, key: H256, value: T) {
-
-    }
+    pub fn update(&mut self, key: H256, value: T) {}
 
     pub fn delete(&mut self, key: &H256) {
-        self.storage.delete_value(key);
+        self.db.delete_value(key);
     }
 
     pub fn get(&self, key: &H256) -> Option<T> {
@@ -41,7 +41,7 @@ impl <T: Encodable + Decodable + Clone> MerkleTree<T> {
             match curr_node {
                 Node::Null => {
                     return None;
-                },
+                }
                 Node::Branch { nibles, value } => {
                     if nibles[key[index] as usize].len() == 0 {
                         curr_node = Node::Null;
@@ -49,29 +49,29 @@ impl <T: Encodable + Decodable + Clone> MerkleTree<T> {
                     }
                     let hash = H256::from(nibles[key[index] as usize].as_slice());
 
-                    if let Some(node) = self.storage.get_node::<T>(&hash) {
+                    if let Some(node) = self.db.get_node::<T>(&hash) {
                         curr_node = node;
                         continue;
                     }
                     curr_node = Node::Null;
-                },
-                Node::Leaf{ path, value } => {
+                }
+                Node::Leaf { path, value } => {
                     if &key[index..] == &path[..] {
                         return Some(value);
                     }
                     curr_node = Node::Null;
-                },
-                Node::Extention{ path, key } => {
-                    if &key[index..index+path.len()] == &path[..] {
+                }
+                Node::Extention { path, key } => {
+                    if &key[index..index + path.len()] == &path[..] {
 
-                        if let Some(node) = self.storage.get_node::<T>(&key) {
+                        if let Some(node) = self.db.get_node::<T>(&key) {
                             curr_node = node;
                             index += path.len();
                             continue;
                         }
                     }
                     curr_node = Node::Null;
-                },
+                }
             }
         }
         None

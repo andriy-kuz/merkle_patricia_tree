@@ -5,4 +5,4 @@ extern crate ethereum_types;
 
 pub mod tree;
 mod node;
-mod storage;
+mod db;
