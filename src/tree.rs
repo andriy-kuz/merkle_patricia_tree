@@ -35,7 +35,7 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
 
     pub fn get(&self, key: &H256) -> Option<T> {
         let mut curr_node = self.root.clone();
-        let key = Self::decompress_key(key);
+        let key = Self::key_bytes_to_hex(key);
 
         for mut index in 0..key.len() {
             match curr_node {
@@ -77,7 +77,7 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
         None
     }
 
-    fn decompress_key(key: &H256) -> Vec<u8> {
+    fn key_bytes_to_hex(key: &H256) -> Vec<u8> {
         let mut result = Vec::new();
 
         for iter in 0..key.len() {
