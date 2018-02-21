@@ -2,8 +2,96 @@ use ethereum_types::H256;
 use rlp::{Encodable, Decodable, RlpStream, UntrustedRlp, DecoderError};
 use std::clone::Clone;
 
+pub enum NodeExp<T: Decodable> {
+    FullNode {nibles: [Option<Box<NodeExp<T>>>; 17], flags: NodeFlag},
+    ShortNode {key: Vec<u8>, value: Box<NodeExp<T>>, flags: NodeFlag},
+    HashNode {hash: H256},
+    ValueNode {value: T},
+    Null,
+}
+
+pub struct NodeFlag {
+    hash: H256,
+    dirty: bool,
+}
+
+pub fn decode_node<T: Decodable>(hash: &H256, data: &[u8]) -> Result<NodeExp<T>, &'static str> {
+    let rlp = UntrustedRlp::new(data);
+    // This is full node
+    if rlp.val_at::<Vec<u8>>(16).is_ok() {
+        return decode_full(hash, rlp);
+    }
+    // This is short node
+    if rlp.val_at::<Vec<u8>>(1).is_ok() {
+        return decode_short(hash, rlp);
+    }
+    Err("Failed to upload trie: wrong data")
+}
+
+pub fn decode_short<T: Decodable>(hash: &H256, rlp: UntrustedRlp) -> Result<NodeExp<T>, &'static str> {
+    let key = compact_decode(rlp.val_at::<Vec<u8>>(0).unwrap());
+    let flags = NodeFlag{hash:hash.clone(), dirty: false};
+    // Is term node
+    if *key.last().unwrap() == 0x10 {
+        return Ok(
+            NodeExp::ShortNode {
+                key,
+                value: Box::new(NodeExp::ValueNode {
+                    value: rlp.val_at::<T>(1).unwrap()
+                }),
+                flags,
+            }
+        )
+    }
+    // This is hash node
+    let data = rlp.val_at::<Vec<u8>>(1).unwrap();
+    let rlp = UntrustedRlp::new(&data[..]);
+    let node : NodeExp<T> = decode_ref(rlp).unwrap();
+    return Ok(
+        NodeExp::ShortNode {
+            key,
+            value: Box::new(node),
+            flags,
+        }
+    )
+}
+
+pub fn decode_full<T: Decodable>(hash: &H256, rlp: UntrustedRlp) -> Result<NodeExp<T>, &'static str> {
+    let flags = NodeFlag{hash:hash.clone(), dirty: false};
+    let mut node : NodeExp<T> = NodeExp::FullNode {nibles: [None, None, None, None,
+    None, None, None, None, None, None, None, None, None, None, None, None, None], flags};
+    //
+    for index in 0..16 {
+        let data = rlp.val_at::<Vec<u8>>(0).unwrap();
+
+        if let Ok(node_ref) = decode_ref::<T>(UntrustedRlp::new(&data[..])) {
+
+            if let &mut NodeExp::FullNode {ref mut nibles, ref flags} = &mut node {
+                nibles[index] = Some(Box::new(node_ref));
+            }
+        }
+    }
+    if let Ok(value) = rlp.val_at::<T>(16) {
+        if let &mut NodeExp::FullNode {ref mut nibles, ref flags} = &mut node {
+            nibles[16] = Some(Box::new(NodeExp::ValueNode{value}));
+        }
+    }
+    Ok(node)
+}
+
+pub fn decode_ref<T: Decodable>(rlp: UntrustedRlp) -> Result<NodeExp<T>, &'static str> {
+    if !rlp.is_list() {
+        return Ok(
+            NodeExp::HashNode{
+                hash: rlp.as_val::<H256>().unwrap()
+            }
+        )
+    }
+    decode_node(&H256::zero(), rlp.as_raw())
+}
+
 #[derive(Clone)]
-pub enum Node<T: Encodable + Decodable + Clone> {
+pub enum Node<T: Decodable + Clone> {
     Null,
     Branch { nibles: [Vec<u8>; 16], value: Option<T> },
     Leaf { path: Vec<u8>, value: T },
