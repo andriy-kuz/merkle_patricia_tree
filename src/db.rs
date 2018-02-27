@@ -42,18 +42,6 @@ impl Database {
             Err(e) => panic!("failed to delete from database: {:?}", e),
         }
     }
-
-    pub fn get_node<T: Encodable + Decodable + Clone>(&self, key: &H256) -> Option<Node<T>> {
-        if let Some(data) = self.get_value(key) {
-            return Some(rlp::decode(&data));
-        }
-        None
-    }
-
-    pub fn set_node<T: Encodable + Decodable + Clone>(&mut self, key: &H256, value: &Node<T>) {
-        let data = rlp::encode(value).into_vec();
-        self.set_value(key, &data);
-    }
 }
 
 #[cfg(test)]

@@ -1,10 +1,12 @@
 use ethereum_types::H256;
 use rlp::{Encodable, Decodable, RlpStream, UntrustedRlp, DecoderError};
 use std::clone::Clone;
+use std::str::FromStr;
+use std::fmt::Debug;
 
-pub enum NodeExp<T: Decodable> {
-    FullNode {nibles: [Option<Box<NodeExp<T>>>; 17], flags: NodeFlag},
-    ShortNode {key: Vec<u8>, value: Box<NodeExp<T>>, flags: NodeFlag},
+pub enum Node<T: Decodable> {
+    FullNode {nibles: [Option<Box<Node<T>>>; 17], flags: NodeFlag},
+    ShortNode {key: Vec<u8>, node: Box<Node<T>>, flags: NodeFlag},
     HashNode {hash: H256},
     ValueNode {value: T},
     Null,
@@ -15,28 +17,29 @@ pub struct NodeFlag {
     dirty: bool,
 }
 
-pub fn decode_node<T: Decodable>(hash: &H256, data: &[u8]) -> Result<NodeExp<T>, &'static str> {
+pub fn decode_node<T: Decodable>(hash: &H256, data: &[u8]) -> Result<Node<T>, &'static str> {
+    if data.is_empty() {
+        return Err("Empty data buffer")
+    }
     let rlp = UntrustedRlp::new(data);
     // This is full node
     if rlp.val_at::<Vec<u8>>(16).is_ok() {
         return decode_full(hash, rlp);
     }
     // This is short node
-    if rlp.val_at::<Vec<u8>>(1).is_ok() {
-        return decode_short(hash, rlp);
-    }
-    Err("Failed to upload trie: wrong data")
+    return decode_short(hash, rlp)
 }
 
-pub fn decode_short<T: Decodable>(hash: &H256, rlp: UntrustedRlp) -> Result<NodeExp<T>, &'static str> {
+pub fn decode_short<T: Decodable>(hash: &H256, rlp: UntrustedRlp) -> Result<Node<T>, &'static str> {
     let key = compact_decode(rlp.val_at::<Vec<u8>>(0).unwrap());
-    let flags = NodeFlag{hash:hash.clone(), dirty: false};
+    let flags = NodeFlag{hash: hash.clone(), dirty: false};
+
     // Is term node
     if *key.last().unwrap() == 0x10 {
         return Ok(
-            NodeExp::ShortNode {
+            Node::ShortNode {
                 key,
-                value: Box::new(NodeExp::ValueNode {
+                node: Box::new(Node::ValueNode {
                     value: rlp.val_at::<T>(1).unwrap()
                 }),
                 flags,
@@ -46,156 +49,57 @@ pub fn decode_short<T: Decodable>(hash: &H256, rlp: UntrustedRlp) -> Result<Node
     // This is hash node
     let data = rlp.val_at::<Vec<u8>>(1).unwrap();
     let rlp = UntrustedRlp::new(&data[..]);
-    let node : NodeExp<T> = decode_ref(rlp).unwrap();
+    let node : Node<T> = decode_ref(rlp)?;
+
     return Ok(
-        NodeExp::ShortNode {
+        Node::ShortNode {
             key,
-            value: Box::new(node),
+            node: Box::new(node),
             flags,
         }
     )
 }
 
-pub fn decode_full<T: Decodable>(hash: &H256, rlp: UntrustedRlp) -> Result<NodeExp<T>, &'static str> {
+pub fn decode_full<T: Decodable>(hash: &H256, rlp: UntrustedRlp) -> Result<Node<T>, &'static str> {
     let flags = NodeFlag{hash:hash.clone(), dirty: false};
-    let mut node : NodeExp<T> = NodeExp::FullNode {nibles: [None, None, None, None,
+    let mut node : Node<T> = Node::FullNode {nibles: [None, None, None, None,
     None, None, None, None, None, None, None, None, None, None, None, None, None], flags};
     //
     for index in 0..16 {
-        let data = rlp.val_at::<Vec<u8>>(0).unwrap();
+        let data = rlp.val_at::<Vec<u8>>(index).unwrap();
 
         if let Ok(node_ref) = decode_ref::<T>(UntrustedRlp::new(&data[..])) {
 
-            if let &mut NodeExp::FullNode {ref mut nibles, ref flags} = &mut node {
+            if let &mut Node::FullNode {ref mut nibles, ref flags} = &mut node {
                 nibles[index] = Some(Box::new(node_ref));
             }
         }
     }
     if let Ok(value) = rlp.val_at::<T>(16) {
-        if let &mut NodeExp::FullNode {ref mut nibles, ref flags} = &mut node {
-            nibles[16] = Some(Box::new(NodeExp::ValueNode{value}));
+        if let &mut Node::FullNode {ref mut nibles, ref flags} = &mut node {
+            nibles[16] = Some(Box::new(Node::ValueNode{value}));
         }
     }
     Ok(node)
 }
 
-pub fn decode_ref<T: Decodable>(rlp: UntrustedRlp) -> Result<NodeExp<T>, &'static str> {
-    if !rlp.is_list() {
+pub fn decode_ref<T: Decodable>(rlp: UntrustedRlp) -> Result<Node<T>, &'static str> {
+    if let Ok(info) = rlp.payload_info() {
+        return decode_node(&H256::zero(), rlp.as_raw())
+    } 
+    else if rlp.as_raw().len() == 32 {
         return Ok(
-            NodeExp::HashNode{
-                hash: rlp.as_val::<H256>().unwrap()
+            Node::HashNode{
+                hash: H256::from_slice(rlp.as_raw())
             }
         )
     }
-    decode_node(&H256::zero(), rlp.as_raw())
-}
-
-#[derive(Clone)]
-pub enum Node<T: Decodable + Clone> {
-    Null,
-    Branch { nibles: [Vec<u8>; 16], value: Option<T> },
-    Leaf { path: Vec<u8>, value: T },
-    Extention { path: Vec<u8>, key: H256 },
-}
-
-impl <T: Encodable + Decodable + Clone> Encodable for Node<T> {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        match self {
-            &Node::Null => {
-                s.begin_list(0);
-            },
-            &Node::Branch { ref nibles, ref value }=> {
-                let mut list = s.begin_list(17);
-                list.append(&nibles[0])
-                .append(&nibles[1])
-                .append(&nibles[2])
-                .append(&nibles[3])
-                .append(&nibles[4])
-                .append(&nibles[5])
-                .append(&nibles[6])
-                .append(&nibles[7])
-                .append(&nibles[8])
-                .append(&nibles[9])
-                .append(&nibles[10])
-                .append(&nibles[11])
-                .append(&nibles[12])
-                .append(&nibles[13])
-                .append(&nibles[14])
-                .append(&nibles[15])
-                .append(value);
-            },
-            &Node::Leaf{ ref path, ref value} => {
-                let mut path = path.clone();
-                // add terminating(leaf) node flag
-                path.push(0x10);
-                let path = compact_encode(path);
-                s.begin_list(2)
-                .append(&path)
-                .append(value);
-            },
-            &Node::Extention{ ref path, ref key} => {
-                let path = compact_encode(path.clone());
-                s.begin_list(2)
-                .append(&path)
-                .append(key);
-            },
-        };
-    }
-}
-
-impl <T: Encodable + Decodable + Clone> Decodable for Node<T> {
-    fn decode(rlp: &UntrustedRlp) -> Result<Self, DecoderError> {
-        // Is null node
-        if !rlp.val_at::<Vec<u8>>(0).is_ok() {
-            return Ok(Node::Null);
-        }
-        // Is branch node
-        if rlp.val_at::<Vec<u8>>(15).is_ok() {
-            return  
-            Ok(
-                Node::Branch {
-                    nibles: [
-                        rlp.val_at::<Vec<u8>>(0)?,
-                        rlp.val_at::<Vec<u8>>(1)?,
-                        rlp.val_at::<Vec<u8>>(2)?,
-                        rlp.val_at::<Vec<u8>>(3)?,
-                        rlp.val_at::<Vec<u8>>(4)?,
-                        rlp.val_at::<Vec<u8>>(5)?,
-                        rlp.val_at::<Vec<u8>>(6)?,
-                        rlp.val_at::<Vec<u8>>(7)?,
-                        rlp.val_at::<Vec<u8>>(8)?,
-                        rlp.val_at::<Vec<u8>>(9)?,
-                        rlp.val_at::<Vec<u8>>(10)?,
-                        rlp.val_at::<Vec<u8>>(11)?,
-                        rlp.val_at::<Vec<u8>>(12)?,
-                        rlp.val_at::<Vec<u8>>(13)?,
-                        rlp.val_at::<Vec<u8>>(14)?,
-                        rlp.val_at::<Vec<u8>>(15)?,
-                    ],
-                    value: rlp.val_at::<Option<T>>(16)?,
-                }
-            );
-        }
-        // This is extension or terminating node
-        let mut path = compact_decode( rlp.val_at::<Vec<u8>>(0)? );
-        // Is terminating node
-        if *path.last().unwrap() == 0x10 {
-            path.pop();
-            return Ok (
-                Node::Leaf {
-                    path,
-                    value : rlp.val_at::<T>(1)?
-                }
+    else if rlp.as_raw().len() == 0 {
+        return Ok(
+            Node::Null
             )
-        }
-        // This is extension node
-        Ok(
-            Node::Extention {
-                path,
-                key : rlp.val_at::<H256>(1)?
-            }
-        )
     }
+    return Err("Invalid RLP")
 }
 
 fn compact_encode(mut hex_array : Vec<u8>) -> Vec<u8> {
@@ -301,128 +205,98 @@ mod tests {
         assert_eq!(result, vec![0x0f, 0x01, 0x0c, 0x0b, 0x08, 0x10]);
     }
 
-    #[test]
-    fn null_node_test() {
-        // Null node
-        let node : Node<u32> = Node::Null;
-        let data = rlp::encode(&node).into_vec();
-        assert_eq!(data[0], 0xc0);
-        let node : Node<u32> = rlp::decode(&data);
-
-        match node {
-            Node::Null => assert!(true),
-            _ => assert!(false),
-        }
-    }
-
-    #[test]
-    fn branch_node_test() {
-        branch_node_with_value(true);
-        branch_node_with_value(false);
-    }
-
-    fn branch_node_with_value(some_value: bool) {
-
-        let node : Node<u32> = Node::Branch {
-            nibles : [
-                vec![],
-                vec![0x01, 0x02, 0x03, 0x04, 0x05], //index 1
-                vec![],
-                vec![],
-                vec![0x01, 0x02, 0x03, 0x04, 0x05], //index 4
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-                vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 
-                0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 
-                0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,
-                0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 
-                0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04], // index 9
-                vec![],
-                vec![],
-                vec![],
-                vec![0x01, 0x02, 0x03, 0x04, 0x05], // index 13
-                vec![],
-                vec![0x01, 0x02, 0x03, 0x04, 0x05], // index 15
-            ],
-            value : if some_value {Some(77)} else {None},
-        };
-        let data = rlp::encode(&node).into_vec();
-        let node : Node<u32> = rlp::decode(&data);
-
-        match node {
-            Node::Branch{ nibles, value } => {
-                // Check empty nibles
-                assert!(nibles[0].is_empty());
-                assert!(nibles[2].is_empty());
-                assert!(nibles[3].is_empty());
-                assert!(nibles[5].is_empty());
-                assert!(nibles[6].is_empty());
-                assert!(nibles[7].is_empty());
-                assert!(nibles[8].is_empty());
-                assert!(nibles[10].is_empty());
-                assert!(nibles[11].is_empty());
-                assert!(nibles[12].is_empty());
-                assert!(nibles[14].is_empty());
-                // Check nibles data
-                assert_eq!(nibles[1], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
-                assert_eq!(nibles[4], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
-
-                assert_eq!(nibles[9], 
-                vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 
-                0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 
-                0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05,
-                0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 
-                0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x03, 0x04]);
-
-                assert_eq!(nibles[13], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
-                assert_eq!(nibles[15], vec![0x01, 0x02, 0x03, 0x04, 0x05]);
-                // Check value
-                assert_eq!(value.is_some(), some_value);
-
-                if let Some(value) = value {
-                    assert_eq!(value, 77);
-                }
+    fn check_value_node<T: Decodable + PartialEq + Debug>(node_val: Box<Node<T>>, test_value: T) {
+        match *node_val {
+            Node::ValueNode{value} => {
+                assert_eq!(test_value, value)
             },
-            _ => assert!(false),
+            Node::ShortNode{node, .. } => {
+                check_value_node::<T>(node, test_value)
+            },
+            _ => {assert!(false)}
+        }
+    }
+
+    fn check_hash_node<T: Decodable>(node: Box<Node<T>>, test_hash: &H256) {
+        match *node {
+            Node::HashNode{hash} => {
+                    assert_eq!(*test_hash, hash)
+                },
+                _ => {assert!(false)}
         }
     }
 
     #[test]
-    fn extention_node_test() {
-        let node : Node<u32> = Node::Extention { 
-            path: vec![0x01, 0x02, 0x03, 0x04, 0x05], 
-            key: H256::from(77 as u64), 
-        };
-        let data = rlp::encode(&node).into_vec();
-        let node : Node<u32> = rlp::decode(&data);
+    fn value_node_test() {
+        let data;
+        let test_value: u64 = 77;
+        // create test rlp data
+        {
+            let mut rlp_s = RlpStream::new_list(2);
+            rlp_s.append(&vec![ 0x20, 0x0f, 0x1c, 0xb8 ]).append(&test_value);
+            data = rlp_s.out()
+        }
+        //
+        let node = decode_node::<u64>(&H256::zero(), &data[..]);
+        assert!(node.is_ok());
+        let node = node.unwrap();
 
         match node {
-            Node::Extention {path, key} => {
-                assert_eq!(path, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
-                assert_eq!(key, H256::from(77 as u64));
-            }
-            _ => assert!(false),
+            Node::ShortNode{key, node, flags} => {
+                check_value_node(node, test_value);
+                
+            },
+            _ => {assert!(false)}
         }
     }
 
     #[test]
-    fn leaf_node_test() {
-        let node : Node<u32> = Node::Leaf { 
-            path: vec![0x01, 0x02, 0x03, 0x04, 0x05], 
-            value: 77, 
-        };
-        let data = rlp::encode(&node).into_vec();
-        let node : Node<u32> = rlp::decode(&data);
+    fn hash_node_test() {
+        let data;
+        let test_hash = H256::from_str("fb7a44857f2faf8167c8b24bf91563335bc8a6459e055029907d1edb9dd143d8").unwrap();
+        // create test rlp data
+        {
+            let mut rlp_s = RlpStream::new_list(2);
+            rlp_s.append(&vec![ 0x11, 0x23, 0x45 ]).append(&test_hash[..].to_vec());
+            data = rlp_s.out()
+        }
+        //
+        let node = decode_node::<u64>(&H256::zero(), &data[..]);
+        assert!(node.is_ok());
+        let node = node.unwrap();
 
         match node {
-            Node::Leaf {path, value} => {
-                assert_eq!(path, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
-                assert_eq!(value, 77);
-            }
-            _ => assert!(false),
+            Node::ShortNode{key, node, flags} => {
+                check_hash_node::<u64>(node, &test_hash);
+                
+            },
+            _ => {assert!(false)}
         }
+    }
 
+    #[test]
+    fn recursive_short_node_test() {
+        let mut data;
+        let test_value: u64 = 77;
+        // create test rlp data
+        {
+            let mut rlp_s = RlpStream::new_list(2);
+            rlp_s.append(&vec![ 0x20, 0x0f, 0x1c, 0xb8 ]).append(&test_value);
+            data = rlp_s.out();
+
+            let mut rlp_s = RlpStream::new_list(2);
+            rlp_s.append(&vec![ 0x11, 0x23, 0x45 ]).append(&data);
+            data = rlp_s.out();
+        }
+        let node = decode_node::<u64>(&H256::zero(), &data[..]);
+        assert!(node.is_ok());
+        let node = node.unwrap();
+        match node {
+            Node::ShortNode{node, .. } => {
+                check_value_node(node, test_value);
+                
+            },
+            _ => {assert!(false)}
+        }
     }
 }
