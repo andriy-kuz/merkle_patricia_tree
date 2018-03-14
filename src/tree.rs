@@ -7,7 +7,7 @@ use db::*;
 
 //TODO: Tests for MerkleTree, Doc, Results system
 pub struct MerkleTree<T: Encodable + Decodable + Clone> {
-    root: Node<T>,
+    root: Box<Node<T>>,
     hash: H256,
     db: Box<Database>,
 }
@@ -15,7 +15,7 @@ pub struct MerkleTree<T: Encodable + Decodable + Clone> {
 impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
     pub fn new(root: H256, db: Box<Database>) -> MerkleTree<T> {
         MerkleTree {
-            root: Node::Null,
+            root: Box::new(Node::Null),
             hash: root,
             db,
         }
@@ -31,8 +31,10 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
         Self::get_helper(&self.db, &key[..], &mut self.root)
     }
 
-    fn get_helper(db: &Database, key_path: &[u8], node: &mut Node<T>) -> Option<T> {
-        match node {
+    fn get_helper(db: &Database, key_path: &[u8], node: &mut Box<Node<T>>) -> Option<T> {
+        let mut decoded_node;
+
+        match node.as_mut() {
             &mut Node::FullNode {ref mut nibles, ref flags} => {
                 if key_path.is_empty() {
                     if let Some(ref mut node) = nibles[16] {
@@ -46,22 +48,32 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
                 return None
             },
             &mut Node::ShortNode {ref key, ref mut node, ref flags} => {
-                if key[..] == key_path[..key.len()] {
+                if key_path.len() >= key.len() && key[..] == key_path[..key.len()] {
                     return Self::get_helper(db, &key_path[key.len()..], node)
                 }
                 return None
             },
             &mut Node::HashNode {ref hash} => {
-                //TODO
+                if let Some(data) = db.get_value(hash) {
+                    let node_value = decode_node::<T>(hash, &data[..]).unwrap();
+                    decoded_node = Box::new(node_value);
+                }
+                else {
+                    decoded_node = Box::new(Node::Null)
+                }
             },
             &mut Node::ValueNode {ref value} => {
-                return Some(value.clone())
+                if key_path.is_empty() {
+                    return Some(value.clone())
+                }
+                return None
             },
             &mut Node::Null => {
                 return None
             }
         }
-        None
+        *node = decoded_node;
+        Self::get_helper(db, &key_path[..], node)
     }
 
     fn key_bytes_to_hex(key: &H256) -> Vec<u8> {
