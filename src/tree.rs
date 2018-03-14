@@ -13,10 +13,18 @@ pub struct MerkleTree<T: Encodable + Decodable + Clone> {
 }
 
 impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
-    pub fn new(root: H256, db: Box<Database>) -> MerkleTree<T> {
+    pub fn new(hash: H256, db: Box<Database>) -> MerkleTree<T> {
+        let root;
+        if let Some(data) = db.get_value(&hash) {
+            let node_value = decode_node::<T>(&hash, &data[..]).unwrap();
+            root = Box::new(node_value);
+        }
+        else {
+            root = Box::new(Node::Null)
+        }
         MerkleTree {
-            root: Box::new(Node::Null),
-            hash: root,
+            root,
+            hash,
             db,
         }
     }
