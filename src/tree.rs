@@ -21,11 +21,11 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
         }
     }
 
-    pub fn update(&mut self, key: &H256, value: Option<Box<Node<T>>>) {
+    pub fn update(&mut self, key: &H256, value: Option<T>) {
         let key_path = Self::key_bytes_to_hex(key);
 
-        if value.is_some() {
-            Self::insert_helper(&self.db, &key_path[..], &mut self.root, value.unwrap());
+        if let Some(value) = value {
+            Self::insert_helper(&self.db, &key_path[..], &mut self.root, Box::new(Node::ValueNode{value}));
         }
         else {
             Self::delete_helper(&self.db, &key_path[..], &mut self.root);
