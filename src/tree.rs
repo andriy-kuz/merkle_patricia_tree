@@ -5,7 +5,7 @@ use rlp;
 use node::*;
 use db::*;
 
-//TODO: Tests for MerkleTree, Doc, Results system
+//TODO: Results system, Tests for MerkleTree, Doc
 pub struct MerkleTree<T: Encodable + Decodable + Clone> {
     root: Box<Node<T>>,
     hash: H256,
@@ -21,14 +21,21 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
         }
     }
 
-    pub fn update(&mut self, key: H256, value: T) {}
+    pub fn update(&mut self, key: &H256, value: Option<Box<Node<T>>>) {
+        let key_path = Self::key_bytes_to_hex(key);
 
-    pub fn delete(&mut self, key: &H256) {
+        if value.is_some() {
+            Self::insert_helper(&self.db, &key_path[..], &mut self.root, value.unwrap());
+        }
+        else {
+            Self::delete_helper(&self.db, &key_path[..], &mut self.root);
+        }
+        //Recalculate hash
     }
 
     pub fn get(&mut self, key: &H256) -> Option<T> {
-        let key = Self::key_bytes_to_hex(key);
-        Self::get_helper(&self.db, &key[..], &mut self.root)
+        let key_path = Self::key_bytes_to_hex(key);
+        Self::get_helper(&self.db, &key_path[..], &mut self.root)
     }
 
     fn get_helper(db: &Database, key_path: &[u8], node: &mut Box<Node<T>>) -> Option<T> {
@@ -74,6 +81,14 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
         }
         *node = decoded_node;
         Self::get_helper(db, &key_path[..], node)
+    }
+
+    fn insert_helper(db: &Database, key_path: &[u8], node: &mut Box<Node<T>>, value_node: Box<Node<T>>) {
+
+    }
+
+    fn delete_helper(db: &Database, key_path: &[u8], node: &mut Box<Node<T>>) {
+
     }
 
     fn key_bytes_to_hex(key: &H256) -> Vec<u8> {
