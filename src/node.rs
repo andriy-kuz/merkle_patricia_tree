@@ -9,7 +9,7 @@ pub enum Node<T: Decodable> {
     ShortNode {key: Vec<u8>, node: Box<Node<T>>, flags: NodeFlag},
     HashNode {hash: H256},
     ValueNode {value: T},
-    Null,
+    Empty,
 }
 
 pub struct NodeFlag {
@@ -19,7 +19,7 @@ pub struct NodeFlag {
 
 pub fn decode_node<T: Decodable>(hash: &H256, data: &[u8]) -> Result<Node<T>, &'static str> {
     if data.is_empty() {
-        return Err("Empty data buffer")
+        return Ok(Node::Empty);
     }
     let rlp = UntrustedRlp::new(data);
     // This is full node
@@ -96,7 +96,7 @@ pub fn decode_ref<T: Decodable>(rlp: UntrustedRlp) -> Result<Node<T>, &'static s
     }
     else if rlp.as_raw().len() == 0 {
         return Ok(
-            Node::Null
+            Node::Empty
             )
     }
     return Err("Invalid RLP")

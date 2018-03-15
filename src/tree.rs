@@ -20,7 +20,7 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
             root = Box::new(node_value);
         }
         else {
-            root = Box::new(Node::Null)
+            root = Box::new(Node::Empty)
         }
         MerkleTree {
             root,
@@ -47,7 +47,7 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
     }
 
     fn get_helper(db: &Database, key_path: &[u8], node: &mut Box<Node<T>>) -> Option<T> {
-        let mut decoded_node;
+        let mut loaded_node;
 
         match node.as_mut() {
             &mut Node::FullNode {ref mut nibles, ref flags} => {
@@ -71,10 +71,10 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
             &mut Node::HashNode {ref hash} => {
                 if let Some(data) = db.get_value(hash) {
                     let node_value = decode_node::<T>(hash, &data[..]).unwrap();
-                    decoded_node = Box::new(node_value);
+                    loaded_node = Box::new(node_value);
                 }
                 else {
-                    decoded_node = Box::new(Node::Null)
+                    loaded_node = Box::new(Node::Empty)
                 }
             },
             &mut Node::ValueNode {ref value} => {
@@ -83,16 +83,41 @@ impl<T: Encodable + Decodable + Clone> MerkleTree<T> {
                 }
                 return None
             },
-            &mut Node::Null => {
+            &mut Node::Empty => {
                 return None
             }
         }
-        *node = decoded_node;
+        *node = loaded_node;
         Self::get_helper(db, &key_path[..], node)
     }
 
-    fn insert_helper(db: &Database, key_path: &[u8], node: &mut Box<Node<T>>, value_node: Box<Node<T>>) {
-
+    fn insert_helper(db: &Database, key_path: &[u8], node: &mut Box<Node<T>>, value_node: Box<Node<T>>) -> (bool, Box<Node<T>>) {
+        match node.as_mut() {
+            &mut Node::FullNode {ref mut nibles, ref flags} => {
+                (false, Box::new(Node::Empty))
+            },
+            &mut Node::ShortNode {ref key, ref mut node, ref flags} => {
+                let (dirty, loaded_node) = Self::insert_helper(db, &key_path[..], node, value_node);
+                if dirty {
+                    *node = loaded_node;
+                }
+                (false, Box::new(Node::Empty))
+            },
+            &mut Node::HashNode {ref hash} => {
+                // tree not loaded
+                if let Some(data) = db.get_value(hash) {
+                    let loaded_node = decode_node::<T>(hash, &data[..]).unwrap();
+                    return (true, Box::new(loaded_node))
+                }
+                (false, Box::new(Node::Empty))
+            },
+            &mut Node::Empty => {
+                (false, Box::new(Node::Empty))
+            },
+            _ => {
+                panic!("Invalid node");
+            }
+        }
     }
 
     fn delete_helper(db: &Database, key_path: &[u8], node: &mut Box<Node<T>>) {
